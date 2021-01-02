@@ -1,0 +1,10 @@
+WALLS
+DOOR
+KEY
+PLAYER
+2350, 48
+GHOST
+HOUSE
+2430, 61
+END
+Here we can add comments about the format of this file.
