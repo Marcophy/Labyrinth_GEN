@@ -1,10 +1,17 @@
+SCREEN
+600, 248
 WALLS
 DOOR
 KEY
 PLAYER
-2350, 48
+600, 45
 GHOST
 HOUSE
-2430, 61
+300, 124
 END
 Here we can add comments about the format of this file.
+
+NOTE: The original screen size is (2490, 1248)
+jugador = 0, 48
+pantalla = 1000,648
+casa = 940, 61

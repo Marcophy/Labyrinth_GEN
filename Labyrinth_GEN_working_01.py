@@ -5,13 +5,9 @@ import os
 import pygame
 import random
 
-# os.chdir('d:\')
+version = "Version 0.2"
 
-version = "Version 0.1"
-
-# ****** Create the game window ******
-screen_size = (1000, 1048)  # (2490, 1248)
-
+# ****** Color variables
 black = (0, 0, 0)
 red = (255, 0, 0)
 white = (255, 255, 255)
@@ -28,7 +24,7 @@ sprite_ratio = 15
 developer = True  # Show the development options
 speed = 20
 top_line_y = 40  # Parameter to describe the y-location of the top line
-max_trials = 100
+max_trials = 8
 
 # ****** Read map ******
 map_file = open('map_00.txt', 'r')
@@ -39,7 +35,9 @@ keys_list = []  # TODO: Add the ID of the linked door
 ghosts_list = []  # TODO: Add the velocity of the ghost
 
 for read_line in map_file.readlines():
-    if read_line == 'WALLS\n':
+    if read_line == 'SCREEN\n':
+        pointer += 1
+    elif read_line == 'WALLS\n':
         pointer += 1
     elif read_line == 'DOOR\n':
         pointer += 1
@@ -54,22 +52,24 @@ for read_line in map_file.readlines():
     elif read_line == 'END\n':
         break
     else:
-        if pointer == 1:  # Wall
+        if pointer == 1:  # screen size
+            screen_size = tuple(map(int, read_line.split(', ')))
+        elif pointer == 2:  # Wall
             read_line = list(map(int, read_line.split(', ')))
             read_line[1] = read_line[1] + 45
             walls_list.append(pygame.Rect(read_line))
-        elif pointer == 2:  # Door
+        elif pointer == 3:  # Door
             read_line = tuple(map(int, read_line.split(', ')))
             doors_list.append(pygame.Rect(read_line))
-        elif pointer == 3:  # Key
+        elif pointer == 4:  # Key
             read_line = tuple(map(int, read_line.split(', ')))
             keys_list.append(read_line)
-        elif pointer == 4:  # player
+        elif pointer == 5:  # player
             player_pos = tuple(map(int, read_line.split(', ')))
-        elif pointer == 5:  # ghost
+        elif pointer == 6:  # ghost
             read_line = tuple(map(int, read_line.split(', ')))
             ghosts_list.append(read_line)
-        elif pointer == 6:  # house
+        elif pointer == 7:  # house
             house_pos = tuple(map(int, read_line.split(', ')))
 map_file.close()
 
@@ -83,8 +83,118 @@ def draw_door(surface, rectangle):
     pygame.draw.rect(surface, brown, rectangle)
 
 
-def fitness(steps_number, bonus, dead):
-    return bonus - dead + 1 / steps_number
+def fitness(steps_number, house_distance, win_bonus, key_bonus, dead_penalty):
+    # The idea is to use the following parameter values:
+    # win_bonus = 1 if find the house
+    # key_bonus = 1 if find the key
+    # dead_penalty = 1 if the player dead
+    # Note: I'm working in this way to decide a better statistic in the future
+
+    if win_bonus:
+        win_bonus_value = 1
+    else:
+        win_bonus_value = 0
+
+    if key_bonus:
+        key_bonus_value = 1
+    else:
+        key_bonus_value = 0
+
+    if dead_penalty:
+        dead_penalty_valuer = 1
+    else:
+        dead_penalty_valuer = 0
+
+    return win_bonus_value + key_bonus_value - dead_penalty_valuer + 1 / steps_number + 1 / house_distance
+
+
+def procreation_probability(file_name):
+    file_id = open(file_name, 'r')
+
+    output_data = []
+
+    for read_line in file_id.readlines():
+        if read_line == 'TRIAL\n':
+            pointer = 0
+            pointer += 1
+        elif read_line == 'FITNESS\n':
+            pointer += 1
+        elif read_line == 'PATH\n':
+            pointer += 1
+        else:
+            if pointer == 2:  # Fitness
+                output_data.append(float(read_line))
+    file_id.close()
+
+    output_data = list(map(lambda x: (x - min(output_data)) / (max(output_data) - min(output_data)), output_data))
+    return output_data
+
+
+def get_path(file_name, trial_selected, next_gen_mode):
+    if not next_gen_mode:
+        file_id = open(file_name, 'r')
+        pointer = 0
+        read_path = False
+
+        output_data = []
+
+        for read_line in file_id.readlines():
+            if read_line == 'TRIAL\n':
+                pointer = 0
+                pointer += 1
+            elif read_line == 'FITNESS\n':
+                pointer += 1
+            elif read_line == 'PATH\n':
+                pointer += 1
+            else:
+                if pointer == 1:  # Trial
+                    if int(read_line) == trial_selected:
+                        read_path = True
+                if pointer == 3 and read_path:
+                    output_data.append(int(read_line))
+        file_id.close()
+    else:
+        file_id = open(file_name, 'r')
+        pointer = 0
+        read_path = False
+
+        output_data = []
+
+        for read_line in file_id.readlines():
+            if read_line == 'TRIAL\n':
+                pointer = 0
+                pointer += 1
+            elif read_line == 'PATH\n':
+                pointer += 1
+            else:
+                if pointer == 1:  # Trial
+                    if int(read_line) == trial_selected:
+                        read_path = True
+                if pointer == 2 and read_path:
+                    output_data.append(int(read_line))
+        file_id.close()
+
+    if len(output_data) == 0:
+        print("ERROR: I didn't find any path in the selected file")
+        exit(1)
+
+    return output_data
+
+
+def procreation(father_se, mother_se, mutation_prob):
+    output_children_a = father_se[0:random.randint(1, len(father_se) - 1)]
+    output_children_a = output_children_a + mother_se[random.randint(0, len(mother_se) - 1):]
+    if random.random() <= mutation_prob:
+        for cnt in range(random.randint(0, len(output_children_a) // 2)):
+            output_children_a[random.randint(0, len(output_children_a) - 1)] = random.randint(0, 4)
+
+    output_children_b = mother_se[0:random.randint(1, len(mother_se) - 1)]
+    output_children_b = output_children_b + father_se[random.randint(0, len(father_se) - 1):]
+    if random.random() <= mutation_prob:
+        for cnt in range(random.randint(0, len(output_children_b) // 2)):
+            output_children_b[random.randint(0, len(output_children_b) - 1)] = random.randint(0, 4)
+
+    return output_children_a, output_children_b
 
 
 # ****** Classes ******
@@ -110,16 +220,16 @@ class Player(pygame.sprite.Sprite):
         self.rect.x += self.player_speed_x
         self.rect.y += self.player_speed_y
 
-        # Control if the location of the player is outside
+        # Control if the location of the player is outside of screen
         if self.rect.x < 0:
             self.rect.x = 0
-        elif self.rect.x > screen_size[0] - 2 * sprite_ratio:
-            self.rect.x = screen_size[0] - 2 * sprite_ratio
+        elif self.rect.x > screen_size[0]:  # - 2 * sprite_ratio:
+            self.rect.x = screen_size[0]  # - 2 * sprite_ratio
 
-        if self.rect.y < top_line_y + 8:
-            self.rect.y = top_line_y + 8
-        elif self.rect.y > screen_size[1] - 2 * sprite_ratio:
-            self.rect.y = screen_size[1] - 2 * sprite_ratio
+        if self.rect.y < top_line_y + 5:  # Last value = 8
+            self.rect.y = top_line_y + 5  # Last value = 8
+        elif self.rect.y > screen_size[1]:  # - 2 * sprite_ratio:
+            self.rect.y = screen_size[1]  # - 2 * sprite_ratio
 
         if developer:
             self.position_track.append([self.rect.x, self.rect.y])
@@ -262,13 +372,17 @@ class Game(object):
         self.game_win = False
         self.control_key = False  # False/True = No/Yes I have the key
         self.control_door = True  # True/False = Close/Open door
-        self.vidas = 3  # Initials lives
+        self.game_stop = False
+        self.vidas = 1  # Initials lives
 
         # ****** Genetic algorithm variables
         self.stage_number = 1
         self.trial_number = 1
         self.steps_number = 0
         self.steps_vector = []
+        self.current_path = []
+        self.generation_file_name = "Generation_" + str(self.stage_number) + ".txt"
+        self.children_file_name = "Generation_ch" + str(self.stage_number) + ".txt"
 
         # ****** Objects definition
         self.player = Player()
@@ -306,6 +420,7 @@ class Game(object):
         self.game_win = False  # Game not win
         self.control_key = False  # Key not found
         self.control_door = True  # Door close
+        self.game_stop = False
 
         # ****** Player
         self.player.rect.x = player_pos[0]
@@ -323,6 +438,7 @@ class Game(object):
 
         # ****** Genetic algorithm
         self.steps_vector = []
+        self.current_path = []
 
         if developer:
             self.player.position_track = []
@@ -333,11 +449,11 @@ class Game(object):
                 # Close the windows by the corner-X
                 return True
 
-#            if events.type == pygame.KEYUP:
-#                if events.key == pygame.K_SPACE:
-#                    # Restart the game after "Game over" by space bar
-#                    if self.game_over or self.game_win:
-#                        self.__init__()
+        #            if events.type == pygame.KEYUP:
+        #                if events.key == pygame.K_SPACE:
+        #                    # Restart the game after "Game over" by space bar
+        #                    if self.game_over or self.game_win:
+        #                        self.__init__()
 
         return False
 
@@ -345,30 +461,38 @@ class Game(object):
         if self.stage_number == 1:
             self.steps_number += 1
             action_selected = random.randint(0, 4)
-            self.steps_vector.append(action_selected)
-            if action_selected == 0:  # Stop
-                self.player.player_speed_x = 0
-                self.player.player_speed_y = 0
-            elif action_selected == 1:  # Move DOWN
-                self.player.player_speed_x = 0
-                self.player.player_speed_y = -speed
-            elif action_selected == 2:  # Move LEFT
-                self.player.player_speed_x = -speed
-                self.player.player_speed_y = 0
-            elif action_selected == 3:  # Move RIGHT
-                self.player.player_speed_x = speed
-                self.player.player_speed_y = 0
-            elif action_selected == 4:  # Move UP
-                self.player.player_speed_x = 0
-                self.player.player_speed_y = speed
-            else:
-                print("ERROR")
-                exit(1)
         else:
-            pass  # TODO: Write the method to use the children paths
+            if len(self.current_path) == 0:
+                self.current_path = get_path(self.children_file_name, self.trial_number, True)
+                print(self.current_path[:10])
+            self.steps_number += 1
+            if self.steps_number < len(self.current_path):
+                action_selected = self.current_path[self.steps_number]
+            else:
+                self.game_stop = True
+
+        self.steps_vector.append(action_selected)
+        if action_selected == 0:  # Stop
+            self.player.player_speed_x = 0
+            self.player.player_speed_y = 0
+        elif action_selected == 1:  # Move DOWN
+            self.player.player_speed_x = 0
+            self.player.player_speed_y = -speed
+        elif action_selected == 2:  # Move LEFT
+            self.player.player_speed_x = -speed
+            self.player.player_speed_y = 0
+        elif action_selected == 3:  # Move RIGHT
+            self.player.player_speed_x = speed
+            self.player.player_speed_y = 0
+        elif action_selected == 4:  # Move UP
+            self.player.player_speed_x = 0
+            self.player.player_speed_y = speed
+        else:
+            print("ERROR")
+            exit(1)
 
     def run_logic(self):
-        # Take the key TODO: link each key to each door
+        # Player takes a key TODO: link each key to each door
         for key_pointed in self.keys_game:
             if pygame.sprite.collide_rect(self.player, key_pointed):
                 key_pointed.rect.x = screen_size[0] - 2 * sprite_ratio
@@ -377,6 +501,7 @@ class Game(object):
 
         # ****** Collisions
         for wall in walls_list:
+            # Player - Walls
             if self.player.rect.colliderect(wall):
                 self.player.player_speed_x = 0
                 self.player.player_speed_y = 0
@@ -384,6 +509,7 @@ class Game(object):
                 self.player.rect.y = self.player.pos_player_old_y
 
             # TODO: Improve the ghost crashes with the wall so that it follows the player
+            # Ghost - Walls
             for ghost_pointed in self.ghosts_game:
                 if ghost_pointed.rect.colliderect(wall):
                     ghost_pointed.ghost_speed_x = 0
@@ -392,6 +518,7 @@ class Game(object):
                     ghost_pointed.rect.y = ghost_pointed.pos_ghost_old_y
 
         for door in doors_list:
+            # Player - Door
             if self.player.rect.colliderect(door):
                 if self.control_key:
                     self.control_door = False
@@ -401,6 +528,7 @@ class Game(object):
                     self.player.rect.x = self.player.pos_player_old_x
                     self.player.rect.y = self.player.pos_player_old_y
 
+            # Ghost - Door
             for ghost_pointed in self.ghosts_game:
                 if ghost_pointed.rect.colliderect(door):
                     ghost_pointed.ghost_speed_x = 0
@@ -408,6 +536,7 @@ class Game(object):
                     ghost_pointed.rect.x = ghost_pointed.pos_ghost_old_x
                     ghost_pointed.rect.y = ghost_pointed.pos_ghost_old_y
 
+        # Ghost - Home
         for ghost_pointed in self.ghosts_game:
             if ghost_pointed.rect.colliderect(self.home):
                 ghost_pointed.ghost_speed_x = 0
@@ -415,6 +544,7 @@ class Game(object):
                 ghost_pointed.rect.x = ghost_pointed.pos_ghost_old_x
                 ghost_pointed.rect.y = ghost_pointed.pos_ghost_old_y
 
+        # Player - Ghost
         for ghost_pointed in self.ghosts_game:
             if self.player.rect.colliderect(ghost_pointed):
                 self.restart()
@@ -423,6 +553,7 @@ class Game(object):
                 else:
                     self.vidas -= 1
 
+        # Player - Home
         if self.player.rect.colliderect(self.home):
             self.game_win = True
 
@@ -485,12 +616,14 @@ class Game(object):
 
     def data_process(self):
         # ****** Save paths in file
-        name = "Generation_" + str(self.stage_number)
-        gen_file = open(name, "a")
+        gen_file = open(self.generation_file_name, "a")
         gen_file.write("TRIAL\n")
         gen_file.write(str(self.trial_number) + "\n")
         gen_file.write("FITNESS\n")
-        gen_file.write("1\n")  # TODO: Finish the method for fitness function
+        aux_distance = math.sqrt(
+            (self.player.rect.x - self.home.rect.x) ** 2 + (self.player.rect.y - self.home.rect.y) ** 2)
+        gen_file.write(
+            str(fitness(self.steps_number, aux_distance, self.game_win, self.control_key, self.game_over)) + "\n")
         gen_file.write("PATH\n")
         for i in self.steps_vector:
             gen_file.write(str(i) + "\n")
@@ -502,11 +635,48 @@ class Game(object):
         self.steps_number = 0
         self.restart()
 
+        # ****** Procreation part
         if self.trial_number > max_trials:
             self.trial_number = 1
-            pass
-            # TODO: 1 - Write the method to storage the paths, 2 - Write the method to create the children,
-            #  3 - Write the method for mutations
+            self.stage_number += 1
+
+            probabilities = procreation_probability(self.generation_file_name)
+
+            new_file_id = open(self.children_file_name, 'w')
+            n_trials = 1
+            for j in range(max_trials // 2):
+                for i in range(2):
+                    accepted = False
+                    selection = 0
+                    while not accepted:
+                        selection = random.randint(1, len(probabilities))
+                        if probabilities[selection - 1] >= random.random():
+                            accepted = True
+
+                    if i == 0:
+                        father = get_path(self.generation_file_name, selection, False)
+                    else:
+                        mother = get_path(self.generation_file_name, selection, False)
+
+                children_a, children_b = procreation(father, mother, 0.2)
+
+                new_file_id.write("TRIAL\n")
+                new_file_id.write(str(n_trials) + "\n")
+                new_file_id.write("PATH\n")
+                for k in children_a:
+                    new_file_id.write(str(k) + "\n")
+                n_trials += 1
+
+                new_file_id.write("TRIAL\n")
+                new_file_id.write(str(n_trials) + "\n")
+                new_file_id.write("PATH\n")
+                for k in children_b:
+                    new_file_id.write(str(k) + "\n")
+                n_trials += 1
+            new_file_id.close()
+
+            self.generation_file_name = "Generation_" + str(self.stage_number) + ".txt"
+            self.children_file_name = "Generation_ch" + str(self.stage_number - 1) + ".txt"
 
 
 # ******************************************************
@@ -543,7 +713,7 @@ def main():
             game.gen_algorithm()
             game.run_logic()
             game.display_frame(screen)
-            if game.game_win:
+            if game.game_win or game.game_stop:
                 game.data_process()
             if not game.state:
                 menu.state = True
