@@ -4,6 +4,8 @@ import math
 import os
 import pygame
 import random
+import numpy as np
+import winsound
 
 version = "Version 0.2"
 
@@ -24,7 +26,11 @@ sprite_ratio = 15
 developer = True  # Show the development options
 speed = 20
 top_line_y = 40  # Parameter to describe the y-location of the top line
-max_trials = 8
+max_trials = 100
+mutation_rate = 0.2
+
+frequency = 1000  # Set Frequency To 2500 Hertz
+duration = 300  # Set Duration To 1000 ms == 1 second
 
 # ****** Read map ******
 map_file = open('map_00.txt', 'r')
@@ -115,14 +121,14 @@ def procreation_probability(file_name):
 
     for read_line in file_id.readlines():
         if read_line == 'TRIAL\n':
-            pointer = 0
-            pointer += 1
+            p_pointer = 0
+            p_pointer += 1
         elif read_line == 'FITNESS\n':
-            pointer += 1
+            p_pointer += 1
         elif read_line == 'PATH\n':
-            pointer += 1
+            p_pointer += 1
         else:
-            if pointer == 2:  # Fitness
+            if p_pointer == 2:  # Fitness
                 output_data.append(float(read_line))
     file_id.close()
 
@@ -130,49 +136,28 @@ def procreation_probability(file_name):
     return output_data
 
 
-def get_path(file_name, trial_selected, next_gen_mode):
-    if not next_gen_mode:
-        file_id = open(file_name, 'r')
-        pointer = 0
-        read_path = False
+def get_path(file_name, trial_selected):
+    file_id = open(file_name, 'r')
+    g_pointer = 0
+    read_path = False
 
-        output_data = []
+    output_data = []
 
-        for read_line in file_id.readlines():
-            if read_line == 'TRIAL\n':
-                pointer = 0
-                pointer += 1
-            elif read_line == 'FITNESS\n':
-                pointer += 1
-            elif read_line == 'PATH\n':
-                pointer += 1
-            else:
-                if pointer == 1:  # Trial
-                    if int(read_line) == trial_selected:
-                        read_path = True
-                if pointer == 3 and read_path:
-                    output_data.append(int(read_line))
-        file_id.close()
-    else:
-        file_id = open(file_name, 'r')
-        pointer = 0
-        read_path = False
-
-        output_data = []
-
-        for read_line in file_id.readlines():
-            if read_line == 'TRIAL\n':
-                pointer = 0
-                pointer += 1
-            elif read_line == 'PATH\n':
-                pointer += 1
-            else:
-                if pointer == 1:  # Trial
-                    if int(read_line) == trial_selected:
-                        read_path = True
-                if pointer == 2 and read_path:
-                    output_data.append(int(read_line))
-        file_id.close()
+    for read_line in file_id.readlines():
+        if read_line == 'TRIAL\n':
+            g_pointer = 0
+            g_pointer += 1
+        elif read_line == 'FITNESS\n':
+            g_pointer += 1
+        elif read_line == 'PATH\n':
+            g_pointer += 1
+        else:
+            if g_pointer == 1:  # Trial
+                if int(read_line) == trial_selected:
+                    read_path = True
+            if g_pointer == 3 and read_path:
+                output_data.append(int(read_line))
+    file_id.close()
 
     if len(output_data) == 0:
         print("ERROR: I didn't find any path in the selected file")
@@ -193,6 +178,11 @@ def procreation(father_se, mother_se, mutation_prob):
     if random.random() <= mutation_prob:
         for cnt in range(random.randint(0, len(output_children_b) // 2)):
             output_children_b[random.randint(0, len(output_children_b) - 1)] = random.randint(0, 4)
+
+    if len(output_children_a) == len(output_children_b):
+        if max(np.array(output_children_a) - np.array(output_children_b)) == 0:
+            print("ERROR: Children_a and children_b are equal.")
+            exit(1)
 
     return output_children_a, output_children_b
 
@@ -334,7 +324,7 @@ class Menu(object):
 
     def display_frame(self, screen):
         screen.fill(black)
-        font = pygame.font.SysFont("serif", 120, bold=True, italic=True)
+        font = pygame.font.SysFont("serif", 50, bold=True, italic=True)
         title_text = font.render("LABYRINTH GEN", True, white)
         title_pos_x = (screen_size[0] // 2) - (title_text.get_width() // 2)
         title_pos_y = (screen_size[1] // 2) - (title_text.get_height() // 2) - 250
@@ -382,7 +372,7 @@ class Game(object):
         self.steps_vector = []
         self.current_path = []
         self.generation_file_name = "Generation_" + str(self.stage_number) + ".txt"
-        self.children_file_name = "Generation_ch" + str(self.stage_number) + ".txt"
+        self.children_file_name = "Generation_ch" + str(self.stage_number - 1) + ".txt"
 
         # ****** Objects definition
         self.player = Player()
@@ -463,11 +453,12 @@ class Game(object):
             action_selected = random.randint(0, 4)
         else:
             if len(self.current_path) == 0:
-                self.current_path = get_path(self.children_file_name, self.trial_number, True)
-                print(self.current_path[:10])
-            self.steps_number += 1
+                self.current_path = get_path(self.children_file_name, self.trial_number)
+#                print(self.current_path[:10])
+
             if self.steps_number < len(self.current_path):
                 action_selected = self.current_path[self.steps_number]
+                self.steps_number += 1
             else:
                 self.game_stop = True
 
@@ -604,7 +595,7 @@ class Game(object):
         screen.blit(text, [200, 5])  # Display
         # Draw steps number
         text = font.render("Step = " + str(self.steps_number), True, white)  # Text
-        screen.blit(text, [400, 5])  # Display
+        screen.blit(text, [350, 5])  # Display
 
         # Draw path line
         if developer:
@@ -639,9 +630,11 @@ class Game(object):
         if self.trial_number > max_trials:
             self.trial_number = 1
             self.stage_number += 1
+            winsound.Beep(frequency, duration)
 
             probabilities = procreation_probability(self.generation_file_name)
 
+            self.children_file_name = "Generation_ch" + str(self.stage_number) + ".txt"
             new_file_id = open(self.children_file_name, 'w')
             n_trials = 1
             for j in range(max_trials // 2):
@@ -654,14 +647,16 @@ class Game(object):
                             accepted = True
 
                     if i == 0:
-                        father = get_path(self.generation_file_name, selection, False)
+                        father = get_path(self.generation_file_name, selection)
                     else:
-                        mother = get_path(self.generation_file_name, selection, False)
+                        mother = get_path(self.generation_file_name, selection)
 
-                children_a, children_b = procreation(father, mother, 0.2)
+                children_a, children_b = procreation(father, mother, mutation_rate)
 
                 new_file_id.write("TRIAL\n")
                 new_file_id.write(str(n_trials) + "\n")
+                new_file_id.write("FITNESS\n")
+                new_file_id.write("0\n")
                 new_file_id.write("PATH\n")
                 for k in children_a:
                     new_file_id.write(str(k) + "\n")
@@ -669,6 +664,8 @@ class Game(object):
 
                 new_file_id.write("TRIAL\n")
                 new_file_id.write(str(n_trials) + "\n")
+                new_file_id.write("FITNESS\n")
+                new_file_id.write("0\n")
                 new_file_id.write("PATH\n")
                 for k in children_b:
                     new_file_id.write(str(k) + "\n")
@@ -676,7 +673,7 @@ class Game(object):
             new_file_id.close()
 
             self.generation_file_name = "Generation_" + str(self.stage_number) + ".txt"
-            self.children_file_name = "Generation_ch" + str(self.stage_number - 1) + ".txt"
+
 
 
 # ******************************************************

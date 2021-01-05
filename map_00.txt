@@ -1,13 +1,13 @@
 SCREEN
-600, 248
+500, 548
 WALLS
 DOOR
 KEY
 PLAYER
-600, 45
+0, 48
 GHOST
 HOUSE
-300, 124
+440, 61
 END
 Here we can add comments about the format of this file.
 
